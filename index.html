@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DiveApp</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen logbook. Globe fills the left stage; a logbook panel on the right
+   swaps between overview, continent and dive. Stacks vertically on phones. */
+:root {
+  --bg: #e6eff1;
+  --surface: #ffffff;
+  --surface-2: #f2f7f8;
+  --ink: #0c2230;
+  --ink-2: #4a6472;
+  --line: #d1dfe3;
+  --ocean-hi: #4d9cbc;
+  --ocean: #2a6c8b;
+  --ocean-lo: #123e56;
+  --grat: rgba(255, 255, 255, 0.16);
+  --land: #b9cdc6;
+  --land-dive: #ecd292;
+  --flag: #d4382e;
+  --flag-ink: #ffffff;
+  --good: #1f7a5a;
+  --warn: #b5650d;
+  --shadow: 0 10px 30px rgba(12, 34, 48, 0.12);
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #05131d; --surface: #0b202e; --surface-2: #0f2838; --ink: #e3edf1; --ink-2: #91a9b5;
+    --line: #1b3a4d; --ocean-hi: #1d6688; --ocean: #0f3c58; --ocean-lo: #061e2d; --grat: rgba(160, 210, 230, 0.10);
+    --land: #2b4b5b; --land-dive: #d8bc72; --flag: #f0574b; --flag-ink: #ffffff; --good: #4cc597; --warn: #f0a24b;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #05131d; --surface: #0b202e; --surface-2: #0f2838; --ink: #e3edf1; --ink-2: #91a9b5;
+  --line: #1b3a4d; --ocean-hi: #1d6688; --ocean: #0f3c58; --ocean-lo: #061e2d; --grat: rgba(160, 210, 230, 0.10);
+  --land: #2b4b5b; --land-dive: #d8bc72; --flag: #f0574b; --flag-ink: #ffffff; --good: #4cc597; --warn: #f0a24b;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--flag); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+
+/* ---------- shell ---------- */
+.app {
+  display: grid; height: 100%;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.top {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 12px;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { flex: none; border-radius: 4px; }
+.brand h1 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.brand p { margin: 0; font-size: 12px; color: var(--ink-2); }
+.top .spacer { flex: 1; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  padding: 8px 14px; font-weight: 600; font-size: 14px; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--flag); color: var(--flag-ink); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost { border-color: transparent; background: transparent; padding-inline: 8px; }
+.btn.danger { color: var(--flag); }
+.btn svg { width: 16px; height: 16px; }
+
+/* ---------- globe ---------- */
+.stage { position: relative; min-height: 0; overflow: hidden; }
+#globe { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#globe:active { cursor: grabbing; }
+.sphere { fill: url(#ocean); }
+.halo { fill: none; stroke: var(--ocean-hi); stroke-opacity: .35; stroke-width: 10; }
+.grat { fill: none; stroke: var(--grat); stroke-width: .7; }
+.cont { fill: var(--land); stroke: var(--ocean-lo); stroke-width: .6; transition: fill .2s; cursor: pointer; outline: none; }
+.cont.has { fill: var(--land-dive); }
+.cont:hover, .cont:focus-visible { filter: brightness(1.08); }
+.cont.sel { fill: var(--flag); }
+.pin circle.core { fill: var(--flag); stroke: var(--flag-ink); stroke-width: 1.5; }
+.pin circle.ring { fill: var(--flag); opacity: .25; }
+.pin { cursor: pointer; }
+.pin.on-sel circle.core { fill: var(--ocean-lo); stroke: var(--land-dive); }
+.clabel { pointer-events: none; }
+.clabel text { font: 600 12px var(--f-body); fill: var(--ocean-lo); paint-order: stroke; stroke: var(--land-dive); stroke-width: 3px; stroke-linejoin: round; }
+.clabel.none text { fill: var(--ink-2); stroke: var(--land); opacity: .0; }
+.clabel .count { font-family: var(--f-data); font-size: 11px; }
+.hint {
+  position: absolute; left: 16px; bottom: 16px; display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; color: var(--ink-2); background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; max-width: calc(100% - 120px);
+}
+.hint span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.zoom { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.zoom button {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--surface); font-size: 18px; line-height: 1; box-shadow: var(--shadow);
+}
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: var(--shadow); white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+.tip b { display: block; font-size: 13px; }
+
+/* ---------- panel ---------- */
+.panel {
+  min-height: 0; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--line);
+}
+.panel-in {
+  padding-block: 20px 32px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px;
+}
+.back { align-self: flex-start; margin-left: -8px; color: var(--ink-2); font-weight: 500; }
+.ph h2 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+.ph p { margin: 4px 0 0; color: var(--ink-2); }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stat { background: var(--surface); padding: 12px 14px; min-width: 0; }
+.stat .v { font-family: var(--f-data); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 13px; color: var(--ink-2); margin-left: 2px; }
+.banner {
+  display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink-2);
+  background: var(--surface-2); border: 1px dashed var(--line); border-radius: var(--r); padding: 10px 12px;
+}
+.banner p { margin: 0; flex: 1; }
+.banner button { border: 0; background: none; color: var(--flag); font-weight: 600; padding: 0; font-size: 13px; }
+.sec { display: flex; flex-direction: column; gap: 8px; }
+.clist { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.crow {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 12px; align-items: center;
+  border: 0; border-bottom: 1px solid var(--line); background: none; padding: 10px 2px; text-align: left;
+}
+.crow:hover { background: var(--surface-2); }
+.crow .n { font-weight: 600; }
+.crow .c { font-family: var(--f-data); font-size: 13px; color: var(--ink-2); text-align: right; }
+.crow.zero { color: var(--ink-2); }
+.crow.zero .n { font-weight: 500; }
+.dives { display: flex; flex-direction: column; gap: 10px; }
+.card {
+  display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
+  border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;
+}
+.card:hover { border-color: var(--ocean-hi); background: var(--surface-2); }
+.card .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.card h3 { font-family: var(--f-body); font-size: 16px; font-weight: 600; }
+.card .where { font-size: 13px; color: var(--ink-2); margin-top: -4px; }
+.figs { display: flex; flex-wrap: wrap; gap: 6px 14px; font-family: var(--f-data); font-size: 13px; font-variant-numeric: tabular-nums; }
+.figs span b { font-weight: 500; }
+.figs span i { font-style: normal; color: var(--ink-2); font-size: 11px; margin-left: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+.chip.ex { border-style: dashed; }
+.empty { text-align: center; color: var(--ink-2); padding: 28px 12px; border: 1px dashed var(--line); border-radius: var(--r); display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.empty p { margin: 0; max-width: 32ch; }
+
+/* dive detail */
+.dh .top-meta { font-size: 13px; color: var(--ink-2); }
+.dh h2 { font-size: 26px; margin-top: 4px; }
+.stars { color: var(--land-dive); letter-spacing: 2px; font-size: 15px; }
+.stars .off { color: var(--line); }
+.prof { border: 1px solid var(--line); border-radius: var(--r); padding: 12px 12px 6px; background: var(--surface-2); }
+.prof svg { width: 100%; height: auto; display: block; }
+.prof .axis text { font: 10px var(--f-data); fill: var(--ink-2); }
+.prof .axis line, .prof .grid line { stroke: var(--line); }
+.prof .area { fill: url(#depthFill); }
+.prof .line { fill: none; stroke: var(--ocean); stroke-width: 2; }
+:root[data-theme="dark"] .prof .line { stroke: var(--ocean-hi); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prof .line { stroke: var(--ocean-hi); } }
+.prof .ss { stroke: var(--flag); stroke-dasharray: 3 3; }
+.prof .ssl { font: 10px var(--f-data); fill: var(--flag); }
+.prof .mx { fill: var(--flag); }
+.prof .note { font-size: 11px; color: var(--ink-2); margin: 4px 0 0; }
+dl.kv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); margin: 0; border-top: 1px solid var(--line); }
+dl.kv dt, dl.kv dd { margin: 0; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+dl.kv dt { color: var(--ink-2); }
+dl.kv dd { font-family: var(--f-data); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+dl.kv dd.txt { font-family: var(--f-body); font-size: 14px; }
+.notes { margin: 0; white-space: pre-wrap; background: var(--surface-2); border-radius: var(--r); padding: 12px 14px; font-size: 14px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--flag); border-radius: var(--r); padding: 10px 12px; font-size: 14px; }
+.confirm p { margin: 0; flex: 1 1 160px; }
+
+/* ---------- form sheet ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; background: rgba(4, 18, 28, .55);
+  display: flex; justify-content: flex-end;
+}
+.sheet {
+  width: min(720px, 100%); height: 100%; background: var(--surface); display: flex; flex-direction: column;
+  box-shadow: var(--shadow);
+}
+.sheet-h, .sheet-f {
+  display: flex; align-items: center; gap: 12px; padding-block: 14px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.sheet-h { border-bottom: 1px solid var(--line); padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+.sheet-h h2 { font-size: 22px; flex: 1; }
+.sheet-f { border-top: 1px solid var(--line); justify-content: flex-end; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+.sheet-f .err { flex: 1; color: var(--flag); font-size: 13px; margin: 0; }
+.sheet-b { overflow-y: auto; flex: 1; padding-block: 8px 28px; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+fieldset { border: 0; padding: 18px 0 6px; margin: 0; border-bottom: 1px solid var(--line); }
+legend { font-family: var(--f-display); font-weight: 700; font-size: 17px; padding: 0; margin-bottom: 4px; }
+.lg-sub { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 14px; }
+.grid .w2 { grid-column: span 2; }
+.grid .full { grid-column: 1 / -1; }
+.f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.f > label, .f > .flab { font-size: 13px; font-weight: 500; }
+.f > label .req { color: var(--flag); }
+.inp { position: relative; display: flex; align-items: center; }
+.inp input, .f select, .f textarea, .f > input {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2);
+  padding: 8px 10px; min-height: 38px;
+}
+.inp input { padding-right: 44px; font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+.inp .u { position: absolute; right: 10px; font-size: 12px; color: var(--ink-2); pointer-events: none; font-family: var(--f-data); }
+.f textarea { min-height: 90px; resize: vertical; }
+.f input:focus, .f select:focus, .f textarea:focus { border-color: var(--ocean-hi); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ocean-hi) 25%, transparent); }
+.f .help { font-size: 12px; color: var(--ink-2); }
+.f .help.warn { color: var(--warn); }
+.f .help.ok { color: var(--good); }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.toggles label { position: relative; }
+.toggles input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.toggles span { display: inline-block; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); font-size: 13px; }
+.toggles input:checked + span { background: var(--ocean); border-color: var(--ocean); color: #fff; }
+.toggles input:focus-visible + span { outline: 2px solid var(--flag); outline-offset: 2px; }
+.rating { display: flex; gap: 2px; flex-direction: row-reverse; justify-content: flex-end; }
+.rating input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rating label { font-size: 26px; color: var(--line); cursor: pointer; line-height: 1; }
+.rating input:checked ~ label, .rating label:hover, .rating label:hover ~ label { color: var(--land-dive); }
+.rating input:focus-visible + label { outline: 2px solid var(--flag); border-radius: 4px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 60;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .app { display: block; height: auto; }
+  .stage { height: min(100vw, 560px); }
+  .panel { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .brand p { display: none; }
+  .hint { max-width: calc(100% - 80px); }
+  .top .btn.primary .lbl-long { display: none; }
+}
+@media (min-width: 861px) { .top .btn.primary .lbl-short { display: none; } }
+@media (max-width: 420px) {
+  .grid .w2 { grid-column: 1 / -1; }
+  .hint .h2 { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cont { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <!-- Bandera de buceador (Alfa/"diver down") -->
+      <svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect width="34" height="26" fill="var(--flag)"/><path d="M0 0h6l28 20v6h-6L0 6z" fill="#fff"/></svg>
+      <div>
+        <h1>DiveApp</h1>
+        <p>Bitácora de inmersiones</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btn-new" type="button">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="lbl-long">Nueva inmersión</span><span class="lbl-short">Nueva</span>
+    </button>
+  </header>
+
+  <main class="stage" id="stage" aria-label="Globo terráqueo con tus inmersiones">
+    <svg id="globe" role="group" aria-label="Globo: pulsa un continente para ver sus inmersiones"></svg>
+    <div class="hint" aria-hidden="true">
+      <span><i class="dot" style="background:var(--land-dive)"></i>Con inmersiones</span>
+      <span><i class="dot" style="background:var(--flag)"></i>Punto de buceo</span>
+      <span class="h2">Arrastra para girar</span>
+    </div>
+    <div class="zoom">
+      <button type="button" id="zin" aria-label="Acercar">+</button>
+      <button type="button" id="zout" aria-label="Alejar">−</button>
+    </div>
+    <div class="tip" id="tip" hidden></div>
+  </main>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="panel-in" id="panel-in"></div>
+  </aside>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <form class="sheet" id="form" novalidate aria-labelledby="form-title">
+    <div class="sheet-h">
+      <h2 id="form-title">Nueva inmersión</h2>
+      <button type="button" class="btn ghost" id="form-x" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="sheet-b" id="form-body"></div>
+    <div class="sheet-f">
+      <p class="err" id="form-err"></p>
+      <button type="button" class="btn" id="form-cancel">Cancelar</button>
+      <button type="submit" class="btn primary">Guardar inmersión</button>
+    </div>
+  </form>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="depthFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--ocean-hi)" stop-opacity=".35"/>
+      <stop offset="1" stop-color="var(--ocean-lo)" stop-opacity=".9"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="js/continents.js"></script>
+<script>
+(() => {
+"use strict";
+
+/* =========================================================
+   Constantes
+   ========================================================= */
+const CONTINENTS = {
+  EU: { name: "Europa",               center: [14, 48] },
+  AF: { name: "África",               center: [20, 4] },
+  AS: { name: "Asia",                 center: [100, 22] },
+  NA: { name: "Norte y Centroamérica",center: [-92, 30] },
+  SA: { name: "Sudamérica",           center: [-60, -16] },
+  OC: { name: "Oceanía",              center: [140, -20] },
+  AN: { name: "Antártida",            center: [0, -75] },
+};
+const ORDER = ["EU", "AF", "AS", "NA", "SA", "OC", "AN"];
+
+const ACTIVITIES = ["Arrecife", "Pecio", "Nocturna", "Deriva", "Cueva / Cenote", "Profunda", "Pared", "Fotografía", "Formación", "Fauna grande"];
+const SUITS = ["Bañador / Licra", "Shorty", "Neopreno 3 mm", "Neopreno 5 mm", "Neopreno 7 mm", "Semiseco", "Traje seco"];
+const CURRENTS = ["Nula", "Débil", "Moderada", "Fuerte"];
+const SEAS = ["Calma", "Rizada", "Marejadilla", "Marejada", "Fuerte marejada"];
+const WEATHER = ["Soleado", "Parcialmente nublado", "Nublado", "Lluvia", "Viento", "Noche"];
+const ENTRIES = ["Barco", "Orilla", "Embarcación neumática", "Plataforma"];
+const GASES = ["Aire", "Nitrox", "Trimix"];
+
+const STORE_KEY = "diveapp.dives.v1";
+const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* =========================================================
+   Datos de ejemplo (marcados como ejemplo: true)
+   ========================================================= */
+const EXAMPLES = [
+  { num: 1, date: "2023-07-15", timeIn: "10:20", timeOut: "11:02", site: "Islas Medas – Dofí Norte", region: "L'Estartit, Costa Brava", country: "España", continent: "EU", lat: 42.048, lon: 3.225,
+    operator: "Centro de buceo Medas", buddy: "Laura", guide: "Jordi", entry: "Barco", activities: ["Arrecife", "Pared"],
+    maxDepth: 18.4, avgDepth: 11.2, duration: 42, surfInt: null, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Aire", o2: 21, tankMat: "Acero", tankVol: 15, pStart: 200, pEnd: 70,
+    tSurf: 23, tBottom: 17, tAir: 27, vis: 15, current: "Débil", sea: "Calma", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 5 mm", weight: 7, computer: "Suunto Zoop", life: "Mero, pulpo, gorgonias rojas, castañuelas",
+    rating: 4, notes: "Primera inmersión tras el curso Open Water. Mucho mero en la zona protegida.", cert: "Open Water", sign: "Jordi P. – Instructor #48213" },
+  { num: 2, date: "2023-09-02", timeIn: "09:45", timeOut: "10:36", site: "Bajo de Fuera", region: "Cabo de Palos, Murcia", country: "España", continent: "EU", lat: 37.65, lon: -0.65,
+    operator: "Islas Hormigas Diving", buddy: "Laura", guide: "Ana", entry: "Barco", activities: ["Arrecife", "Fauna grande"],
+    maxDepth: 26.8, avgDepth: 17.5, duration: 51, surfInt: null, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 32, tankMat: "Acero", tankVol: 15, pStart: 210, pEnd: 60,
+    tSurf: 25, tBottom: 19, tAir: 29, vis: 20, current: "Moderada", sea: "Rizada", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 5 mm", weight: 6, computer: "Suunto Zoop", life: "Barracudas, meros, dentones, morena",
+    rating: 5, notes: "Banco enorme de barracudas en la cima del bajo.", cert: "Advanced Open Water", sign: "Ana R. – Guía" },
+  { num: 3, date: "2024-03-14", timeIn: "06:40", timeOut: "07:28", site: "SS Thistlegorm", region: "Mar Rojo, Sharm el-Sheij", country: "Egipto", continent: "AF", lat: 27.814, lon: 33.921,
+    operator: "Liveaboard Blue Horizon", buddy: "Marcos", guide: "Ahmed", entry: "Embarcación neumática", activities: ["Pecio", "Profunda"],
+    maxDepth: 30.2, avgDepth: 21.6, duration: 48, surfInt: 95, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 32, tankMat: "Aluminio", tankVol: 12, pStart: 210, pEnd: 50,
+    tSurf: 23, tBottom: 22, tAir: 24, vis: 25, current: "Fuerte", sea: "Marejadilla", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 5 mm", weight: 8, computer: "Suunto Zoop", life: "Peces cristal, peces napoleón, tortuga",
+    rating: 5, notes: "Bodegas con motos BSA y camiones. Corriente fuerte en el cabo de amarre.", cert: "Advanced Open Water", sign: "Ahmed S. – Divemaster" },
+  { num: 4, date: "2024-03-16", timeIn: "11:10", timeOut: "11:58", site: "Blue Hole – The Bells", region: "Dahab, Sinaí", country: "Egipto", continent: "AF", lat: 28.572, lon: 34.537,
+    operator: "Dahab Divers", buddy: "Marcos", guide: "", entry: "Orilla", activities: ["Pared", "Arrecife"],
+    maxDepth: 27.0, avgDepth: 14.3, duration: 48, surfInt: 120, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Aire", o2: 21, tankMat: "Aluminio", tankVol: 12, pStart: 200, pEnd: 60,
+    tSurf: 23, tBottom: 22, tAir: 26, vis: 30, current: "Nula", sea: "Calma", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 5 mm", weight: 7, computer: "Suunto Zoop", life: "Pez león, corales blandos, pez loro",
+    rating: 4, notes: "Entrada por la chimenea de The Bells y pared hasta el Blue Hole.", cert: "Advanced Open Water", sign: "" },
+  { num: 5, date: "2024-08-05", timeIn: "10:05", timeOut: "10:52", site: "Cenote Dos Ojos – Barbie Line", region: "Tulum, Quintana Roo", country: "México", continent: "NA", lat: 20.327, lon: -87.391,
+    operator: "Cenote Dive Tulum", buddy: "Laura", guide: "Diego", entry: "Orilla", activities: ["Cueva / Cenote", "Fotografía"],
+    maxDepth: 9.5, avgDepth: 6.8, duration: 47, surfInt: null, ssDepth: null, ssTime: 0, deco: "",
+    gas: "Aire", o2: 21, tankMat: "Aluminio", tankVol: 11, pStart: 200, pEnd: 110,
+    tSurf: 25, tBottom: 25, tAir: 31, vis: 60, current: "Nula", sea: "Calma", weather: "Soleado", water: "Dulce",
+    suit: "Neopreno 3 mm", weight: 4, computer: "Suunto Zoop", life: "Estalactitas, peces ciegos",
+    rating: 5, notes: "Inmersión en caverna, siempre con luz natural a la vista. Rayos de luz increíbles.", cert: "Advanced Open Water", sign: "Diego M. – Instructor cave" },
+  { num: 6, date: "2024-08-08", timeIn: "09:30", timeOut: "10:25", site: "Arrecife Palancar – Herradura", region: "Cozumel", country: "México", continent: "NA", lat: 20.31, lon: -87.03,
+    operator: "Cozumel Reef Divers", buddy: "Laura", guide: "Diego", entry: "Barco", activities: ["Deriva", "Arrecife"],
+    maxDepth: 22.6, avgDepth: 14.9, duration: 55, surfInt: null, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 32, tankMat: "Aluminio", tankVol: 11, pStart: 200, pEnd: 60,
+    tSurf: 29, tBottom: 28, tAir: 32, vis: 30, current: "Moderada", sea: "Calma", weather: "Parcialmente nublado", water: "Salada",
+    suit: "Shorty", weight: 4, computer: "Suunto Zoop", life: "Tortuga carey, raya águila, langosta",
+    rating: 4, notes: "Deriva suave entre torres de coral.", cert: "Advanced Open Water", sign: "" },
+  { num: 7, date: "2025-02-20", timeIn: "08:15", timeOut: "09:12", site: "Cape Kri", region: "Raja Ampat", country: "Indonesia", continent: "AS", lat: -0.556, lon: 130.69,
+    operator: "Raja Ampat Dive Lodge", buddy: "Marcos", guide: "Yosef", entry: "Barco", activities: ["Arrecife", "Deriva", "Fauna grande"],
+    maxDepth: 24.0, avgDepth: 15.8, duration: 57, surfInt: null, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 30, tankMat: "Aluminio", tankVol: 12, pStart: 200, pEnd: 50,
+    tSurf: 29, tBottom: 28, tAir: 31, vis: 20, current: "Fuerte", sea: "Calma", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 3 mm", weight: 4, computer: "Shearwater Peregrine", life: "Tiburón de puntas negras, carángidos, wobbegong, tortuga verde",
+    rating: 5, notes: "La mayor densidad de peces que he visto. Ganchos de arrecife en la esquina.", cert: "Advanced Open Water", sign: "Yosef K. – Guía" },
+  { num: 8, date: "2025-02-24", timeIn: "16:40", timeOut: "17:24", site: "Chumphon Pinnacle", region: "Koh Tao", country: "Tailandia", continent: "AS", lat: 10.16, lon: 99.81,
+    operator: "Koh Tao Diving", buddy: "Marcos", guide: "Nok", entry: "Barco", activities: ["Arrecife"],
+    maxDepth: 28.5, avgDepth: 18.2, duration: 44, surfInt: 80, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Aire", o2: 21, tankMat: "Aluminio", tankVol: 12, pStart: 200, pEnd: 50,
+    tSurf: 30, tBottom: 29, tAir: 32, vis: 15, current: "Débil", sea: "Marejadilla", weather: "Nublado", water: "Salada",
+    suit: "Neopreno 3 mm", weight: 4, computer: "Shearwater Peregrine", life: "Barracudas, anémonas, pez murciélago",
+    rating: 3, notes: "Esperábamos tiburón ballena, no apareció.", cert: "Advanced Open Water", sign: "" },
+  { num: 9, date: "2025-06-11", timeIn: "07:50", timeOut: "08:41", site: "Cod Hole", region: "Gran Barrera de Coral, Queensland", country: "Australia", continent: "OC", lat: -14.67, lon: 145.63,
+    operator: "Coral Expeditions", buddy: "Laura", guide: "Mia", entry: "Barco", activities: ["Arrecife", "Fauna grande", "Fotografía"],
+    maxDepth: 19.8, avgDepth: 12.4, duration: 51, surfInt: null, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 32, tankMat: "Aluminio", tankVol: 12, pStart: 200, pEnd: 70,
+    tSurf: 25, tBottom: 24, tAir: 26, vis: 25, current: "Débil", sea: "Rizada", weather: "Soleado", water: "Salada",
+    suit: "Neopreno 3 mm", weight: 5, computer: "Shearwater Peregrine", life: "Meros patata, almejas gigantes, tiburón de arrecife",
+    rating: 5, notes: "Los meros patata se acercan a menos de un metro.", cert: "Rescue Diver", sign: "Mia T. – Instructora #91022" },
+  { num: 10, date: "2025-10-03", timeIn: "08:30", timeOut: "09:16", site: "Arco de Darwin", region: "Islas Galápagos", country: "Ecuador", continent: "SA", lat: 1.678, lon: -92.003,
+    operator: "Galápagos Sky (crucero)", buddy: "Marcos", guide: "Fernando", entry: "Embarcación neumática", activities: ["Pared", "Fauna grande", "Profunda"],
+    maxDepth: 29.4, avgDepth: 19.6, duration: 46, surfInt: 110, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Nitrox", o2: 30, tankMat: "Aluminio", tankVol: 12, pStart: 210, pEnd: 50,
+    tSurf: 24, tBottom: 20, tAir: 25, vis: 18, current: "Fuerte", sea: "Marejada", weather: "Nublado", water: "Salada",
+    suit: "Neopreno 7 mm", weight: 8, computer: "Shearwater Peregrine", life: "Tiburones martillo (+50), tiburón ballena, delfines",
+    rating: 5, notes: "Agarrados a las rocas viendo pasar el banco de martillos. Termoclina a 20 m.", cert: "Rescue Diver", sign: "Fernando G. – Guía del parque" },
+  { num: 11, date: "2025-10-12", timeIn: "19:10", timeOut: "19:52", site: "Buraco das Cabras", region: "Fernando de Noronha", country: "Brasil", continent: "SA", lat: -3.85, lon: -32.42,
+    operator: "Noronha Divers", buddy: "Marcos", guide: "Bruna", entry: "Barco", activities: ["Nocturna", "Arrecife"],
+    maxDepth: 14.2, avgDepth: 9.1, duration: 42, surfInt: 150, ssDepth: 5, ssTime: 3, deco: "",
+    gas: "Aire", o2: 21, tankMat: "Aluminio", tankVol: 12, pStart: 200, pEnd: 90,
+    tSurf: 27, tBottom: 27, tAir: 26, vis: 20, current: "Nula", sea: "Calma", weather: "Noche", water: "Salada",
+    suit: "Neopreno 3 mm", weight: 4, computer: "Shearwater Peregrine", life: "Pulpo, langostas, tortuga durmiendo",
+    rating: 4, notes: "Nocturna con plancton bioluminiscente al apagar las linternas.", cert: "Rescue Diver", sign: "" },
+];
+
+/* =========================================================
+   Persistencia
+   ========================================================= */
+let dives = load();
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* sin almacenamiento disponible */ }
+  return EXAMPLES.map((d, i) => ({ ...d, id: "ex" + (i + 1), example: true }));
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(dives)); } catch (e) { /* ignorar */ }
+}
+
+/* =========================================================
+   Utilidades
+   ========================================================= */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nf1 = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 });
+const nf0 = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
+const df = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric" });
+const has = (v) => v !== null && v !== undefined && v !== "" && !(typeof v === "number" && isNaN(v));
+const fmtDate = (s) => { try { return df.format(new Date(s + "T12:00:00")); } catch (e) { return s; } };
+const fmtMin = (m) => { if (!has(m)) return "—"; const h = Math.floor(m / 60), r = Math.round(m % 60); return h ? `${h} h ${r} min` : `${r} min`; };
+const u = (v, unit, f = nf1) => has(v) ? `${f.format(v)} ${unit}` : "—";
+const gasLabel = (d) => d.gas === "Nitrox" ? `Nitrox ${d.o2 || 32}` : d.gas === "Trimix" ? `Trimix ${d.o2 || ""}/${d.he || ""}` : (d.gas || "Aire");
+const byDateDesc = (a, b) => (b.date + (b.timeIn || "")).localeCompare(a.date + (a.timeIn || ""));
+function sac(d) {
+  if (![d.pStart, d.pEnd, d.tankVol, d.duration].every(has) || !d.duration) return null;
+  const depth = has(d.avgDepth) ? d.avgDepth : (has(d.maxDepth) ? d.maxDepth * 0.6 : null);
+  if (depth === null) return null;
+  return ((d.pStart - d.pEnd) * d.tankVol) / d.duration / (depth / 10 + 1);
+}
+function mod(o2, ppo2 = 1.4) { return o2 ? (ppo2 / (o2 / 100) - 1) * 10 : null; }
+function summarize(list) {
+  return {
+    n: list.length,
+    time: list.reduce((s, d) => s + (+d.duration || 0), 0),
+    max: list.reduce((m, d) => Math.max(m, +d.maxDepth || 0), 0),
+    countries: new Set(list.map((d) => (d.country || "").trim()).filter(Boolean)).size,
+    temp: (() => { const t = list.map((d) => d.tBottom).filter(has); return t.length ? t.reduce((a, b) => a + +b, 0) / t.length : null; })(),
+    continents: new Set(list.map((d) => d.continent)).size,
+  };
+}
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2400);
+}
+
+/* =========================================================
+   Globo
+   ========================================================= */
+const world = window.WORLD_CONTINENTS;
+const svg = d3.select("#globe");
+const stage = $("#stage");
+const projection = d3.geoOrthographic().clipAngle(90).precision(0.4);
+const path = d3.geoPath(projection);
+const graticule = d3.geoGraticule10();
+let rot = [-10, -25, 0];
+let zoomK = 1;
+let baseScale = 200;
+let selected = null; // código de continente
+let spinning = !reduced;
+
+const defs = svg.append("defs");
+const og = defs.append("radialGradient").attr("id", "ocean").attr("cx", "38%").attr("cy", "32%").attr("r", "72%");
+og.append("stop").attr("offset", "0").attr("stop-color", "var(--ocean-hi)");
+og.append("stop").attr("offset", ".55").attr("stop-color", "var(--ocean)");
+og.append("stop").attr("offset", "1").attr("stop-color", "var(--ocean-lo)");
+
+const gHalo = svg.append("path").attr("class", "halo");
+const gSphere = svg.append("path").attr("class", "sphere");
+const gGrat = svg.append("path").attr("class", "grat");
+const gCont = svg.append("g");
+const gPins = svg.append("g").attr("class", "pins");
+const gLabels = svg.append("g");
+
+const contSel = gCont.selectAll("path").data(world.features).join("path")
+  .attr("class", "cont")
+  .attr("tabindex", 0)
+  .attr("role", "button")
+  .on("click", (e, d) => selectContinent(d.id))
+  .on("keydown", (e, d) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectContinent(d.id); } })
+  .on("pointermove", (e, d) => showTip(e, `<b>${esc(CONTINENTS[d.id].name)}</b>${countText(d.id)}`))
+  .on("pointerleave", hideTip);
+
+function countText(code) {
+  const n = dives.filter((x) => x.continent === code).length;
+  return n ? `${n} inmersi${n === 1 ? "ón" : "ones"}` : "Sin inmersiones todavía";
+}
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  svg.attr("viewBox", `0 0 ${w} ${h}`);
+  baseScale = Math.max(80, Math.min(w, h) / 2 - 26);
+  projection.translate([w / 2, h / 2]);
+  render();
+}
+
+function render() {
+  projection.scale(baseScale * zoomK).rotate(rot);
+  const sphere = { type: "Sphere" };
+  gSphere.attr("d", path(sphere));
+  gHalo.attr("d", path(sphere));
+  gGrat.attr("d", path(graticule));
+  contSel
+    .attr("d", path)
+    .classed("has", (d) => dives.some((x) => x.continent === d.id))
+    .classed("sel", (d) => d.id === selected)
+    .attr("aria-label", (d) => `${CONTINENTS[d.id].name}: ${countText(d.id)}`);
+
+  const center = [-rot[0], -rot[1]];
+  const pinData = dives.filter((d) => has(d.lat) && has(d.lon));
+  gPins.selectAll("g.pin").data(pinData, (d) => d.id).join((enter) => {
+    const g = enter.append("g").attr("class", "pin");
+    g.append("circle").attr("class", "ring").attr("r", 9);
+    g.append("circle").attr("class", "core").attr("r", 4.5);
+    g.on("click", (e, d) => { e.stopPropagation(); openDive(d.id, true); })
+     .on("pointermove", (e, d) => showTip(e, `<b>${esc(d.site)}</b>${esc(d.country || "")} · ${u(d.maxDepth, "m")} · ${d.duration || "—"} min`))
+     .on("pointerleave", hideTip);
+    return g;
+  })
+    .attr("display", (d) => d3.geoDistance([d.lon, d.lat], center) < Math.PI / 2 - 0.03 ? null : "none")
+    .attr("transform", (d) => { const p = projection([d.lon, d.lat]); return `translate(${p[0]},${p[1]})`; })
+    .classed("on-sel", (d) => d.continent === selected);
+
+  const labelData = ORDER.map((code) => ({ code, n: dives.filter((x) => x.continent === code).length }));
+  gLabels.selectAll("g.clabel").data(labelData, (d) => d.code).join((enter) => {
+    const g = enter.append("g").attr("class", "clabel");
+    g.append("text").attr("text-anchor", "middle");
+    return g;
+  })
+    .classed("none", (d) => d.n === 0)
+    .attr("display", (d) => d.n && d3.geoDistance(CONTINENTS[d.code].center, center) < Math.PI / 2 - 0.25 ? null : "none")
+    .attr("transform", (d) => { const p = projection(CONTINENTS[d.code].center); return `translate(${p[0]},${p[1] - 14})`; })
+    .select("text").text((d) => `${CONTINENTS[d.code].name} · ${d.n}`);
+}
+
+/* rotación: arrastrar */
+svg.call(d3.drag()
+  .clickDistance(5)
+  .on("start", () => { spinning = false; hideTip(); })
+  .on("drag", (e) => {
+    const k = 70 / projection.scale();
+    rot = [rot[0] + e.dx * k, Math.max(-85, Math.min(85, rot[1] - e.dy * k)), 0];
+    render();
+  }));
+
+/* zoom */
+function setZoom(k) { zoomK = Math.max(0.7, Math.min(4, k)); render(); }
+$("#zin").addEventListener("click", () => setZoom(zoomK * 1.35));
+$("#zout").addEventListener("click", () => setZoom(zoomK / 1.35));
+svg.node().addEventListener("wheel", (e) => { e.preventDefault(); spinning = false; setZoom(zoomK * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+
+/* giro automático suave hasta que el usuario interactúa */
+d3.timer((elapsed) => {
+  if (!spinning) return;
+  rot = [rot[0] + 0.12, rot[1], 0];
+  render();
+});
+
+function flyTo([lon, lat], k) {
+  spinning = false;
+  const r0 = rot.slice();
+  let dl = -lon - r0[0];
+  dl = ((dl + 540) % 360) - 180;
+  const r1 = [r0[0] + dl, -lat, 0];
+  const iR = d3.interpolate(r0, r1);
+  const iK = d3.interpolate(zoomK, k ?? zoomK);
+  d3.transition().duration(reduced ? 0 : 900).ease(d3.easeCubicInOut)
+    .tween("rot", () => (t) => { rot = iR(t); zoomK = iK(t); render(); });
+}
+
+const tip = $("#tip");
+function showTip(e, html) {
+  const r = stage.getBoundingClientRect();
+  tip.innerHTML = html; tip.hidden = false;
+  tip.style.left = (e.clientX - r.left) + "px";
+  tip.style.top = (e.clientY - r.top) + "px";
+}
+function hideTip() { tip.hidden = true; }
+
+/* =========================================================
+   Panel
+   ========================================================= */
+const panelIn = $("#panel-in");
+let view = { type: "home" };
+let confirmDelete = false;
+
+function renderPanel() {
+  if (view.type === "home") panelIn.innerHTML = homeHTML();
+  else if (view.type === "continent") panelIn.innerHTML = continentHTML(view.code);
+  else if (view.type === "dive") panelIn.innerHTML = diveHTML(view.id);
+  $("#panel").scrollTop = 0;
+}
+
+function statsHTML(s, extra) {
+  return `<div class="stats">
+    <div class="stat"><div class="label">Inmersiones</div><div class="v">${s.n}</div></div>
+    <div class="stat"><div class="label">Bajo el agua</div><div class="v">${Math.floor(s.time / 60)}<small>h</small> ${s.time % 60}<small>min</small></div></div>
+    <div class="stat"><div class="label">Prof. máxima</div><div class="v">${nf1.format(s.max)}<small>m</small></div></div>
+    ${extra}
+  </div>`;
+}
+
+function cardHTML(d) {
+  const chips = [d.entry, ...(d.activities || [])].filter(Boolean).slice(0, 4).map((a) => `<span class="chip">${esc(a)}</span>`).join("");
+  return `<button type="button" class="card" data-dive="${esc(d.id)}">
+    <div class="meta"><span class="num">#${esc(d.num ?? "")} · ${fmtDate(d.date)}</span>${d.example ? '<span class="chip ex">Ejemplo</span>' : ""}</div>
+    <h3>${esc(d.site)}</h3>
+    <div class="where">${esc([d.region, d.country].filter(Boolean).join(" · "))}</div>
+    <div class="figs">
+      <span><b>${has(d.maxDepth) ? nf1.format(d.maxDepth) : "—"}</b><i>m</i></span>
+      <span><b>${has(d.duration) ? d.duration : "—"}</b><i>min</i></span>
+      <span><b>${has(d.tBottom) ? nf0.format(d.tBottom) : "—"}</b><i>°C</i></span>
+      <span><b>${esc(gasLabel(d))}</b></span>
+    </div>
+    ${chips ? `<div class="chips">${chips}</div>` : ""}
+  </button>`;
+}
+
+function homeHTML() {
+  const s = summarize(dives);
+  const anyEx = dives.some((d) => d.example);
+  const rows = ORDER.map((code) => {
+    const list = dives.filter((d) => d.continent === code);
+    const mx = list.reduce((m, d) => Math.max(m, +d.maxDepth || 0), 0);
+    return `<button type="button" class="crow ${list.length ? "" : "zero"}" data-cont="${code}">
+      <i class="dot" style="background:${list.length ? "var(--land-dive)" : "var(--land)"}"></i>
+      <span class="n">${CONTINENTS[code].name}</span>
+      <span class="c">${list.length ? nf1.format(mx) + " m" : ""}</span>
+      <span class="c">${list.length}</span>
+    </button>`;
+  }).join("");
+  const recent = dives.slice().sort(byDateDesc).slice(0, 3).map(cardHTML).join("");
+  return `
+    <div class="ph"><h2>Tu bitácora</h2><p>Pulsa un continente en el globo para ver las inmersiones que has hecho allí.</p></div>
+    ${statsHTML(s, `<div class="stat"><div class="label">Países · continentes</div><div class="v">${s.countries}<small>·</small>${s.continents}</div></div>`)}
+    ${anyEx ? `<div class="banner"><p>Estás viendo inmersiones de ejemplo para que veas cómo queda la app. Las tuyas se guardan en este navegador.</p><button type="button" id="clear-ex">Quitar ejemplos</button></div>` : ""}
+    <section class="sec">
+      <div class="label" style="display:flex;justify-content:space-between"><span>Continentes</span><span>Máx. · Nº</span></div>
+      <div class="clist">${rows}</div>
+    </section>
+    ${recent ? `<section class="sec"><div class="label">Últimas inmersiones</div><div class="dives">${recent}</div></section>` : `<div class="empty"><p>Todavía no has registrado ninguna inmersión.</p><button type="button" class="btn primary" data-new="">Registrar la primera</button></div>`}
+  `;
+}
+
+function continentHTML(code) {
+  const list = dives.filter((d) => d.continent === code).sort(byDateDesc);
+  const s = summarize(list);
+  const name = CONTINENTS[code].name;
+  return `
+    <button type="button" class="btn ghost back" data-home="">← Todos los continentes</button>
+    <div class="ph"><h2>${name}</h2><p>${list.length ? `${list.length} inmersi${list.length === 1 ? "ón" : "ones"} en ${s.countries} ${s.countries === 1 ? "país" : "países"}` : "Sin inmersiones registradas"}</p></div>
+    ${list.length ? statsHTML(s, `<div class="stat"><div class="label">Temp. media fondo</div><div class="v">${s.temp !== null ? nf0.format(s.temp) : "—"}<small>°C</small></div></div>`) : ""}
+    ${list.length
+      ? `<div class="dives">${list.map(cardHTML).join("")}</div>`
+      : `<div class="empty"><p>Aún no has buceado en ${name}. Cuando lo hagas, añádela aquí.</p><button type="button" class="btn primary" data-new="${code}">Añadir inmersión en ${name}</button></div>`}
+  `;
+}
+
+function profileSVG(d) {
+  const T = +d.duration, D = +d.maxDepth;
+  if (!T || !D) return "";
+  const ssT = has(d.ssTime) ? +d.ssTime : (D >= 10 ? 3 : 0);
+  const ssD = ssT ? (has(d.ssDepth) ? +d.ssDepth : 5) : 0;
+  const avg = has(d.avgDepth) ? +d.avgDepth : D * 0.65;
+  let desc = Math.max(0.6, D / 18);
+  let asc1 = (D * 0.55 - ssD) / 9, asc2 = ssD / 9;
+  let bottom = T - desc - asc1 - ssT - asc2;
+  if (bottom < T * 0.3) { const f = (T * 0.7) / (desc + asc1 + ssT + asc2); desc *= f; asc1 *= f; asc2 *= f; bottom = T * 0.3; }
+  const ssTT = T - desc - bottom - asc1 - asc2; // duración real de la parada
+  const t1 = desc, t2 = t1 + bottom * 0.3, t3 = t1 + bottom * 0.65, t4 = t1 + bottom;
+  const lvl = Math.max(ssD + 1, 2 * avg - D * 0.92);
+  const pts = [[0, 0], [t1, D], [t2, D * 0.95], [t3, Math.min(D * 0.8, (D + lvl) / 2)], [t4, Math.max(lvl, D * 0.55)]];
+  if (ssD) { pts.push([t4 + asc1, ssD], [t4 + asc1 + ssTT, ssD]); }
+  pts.push([T, 0]);
+  const W = 340, H = 150, m = { l: 34, r: 10, t: 10, b: 22 };
+  const x = d3.scaleLinear().domain([0, T]).range([m.l, W - m.r]);
+  const y = d3.scaleLinear().domain([0, D]).nice(4).range([m.t, H - m.b]);
+  const line = d3.line().x((p) => x(p[0])).y((p) => y(p[1])).curve(d3.curveMonotoneX);
+  const area = d3.area().x((p) => x(p[0])).y0(y(0)).y1((p) => y(p[1])).curve(d3.curveMonotoneX);
+  const yt = y.ticks(4).map((v) => `<g><line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${m.l - 6}" y="${y(v) + 3}" text-anchor="end">${v}</text></g>`).join("");
+  const xt = x.ticks(5).map((v) => `<text x="${x(v)}" y="${H - 6}" text-anchor="middle">${v}′</text>`).join("");
+  const ss = ssD ? `<line class="ss" x1="${x(t4 + asc1)}" x2="${x(t4 + asc1 + ssTT)}" y1="${y(ssD)}" y2="${y(ssD)}"/><text class="ssl" x="${x(t4 + asc1 + ssTT)}" y="${y(ssD) - 5}" text-anchor="end">parada ${nf0.format(ssD)} m</text>` : "";
+  return `<div class="prof">
+    <div class="label" style="margin-bottom:6px;display:flex;justify-content:space-between;gap:8px"><span>Perfil · profundidad (m) / tiempo (min)</span><span style="color:var(--flag)">● máx. ${nf1.format(D)} m</span></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Perfil aproximado: máximo ${nf1.format(D)} metros en ${T} minutos">
+      <g class="grid axis">${yt}</g>
+      <path class="area" d="${area(pts)}"/>
+      <path class="line" d="${line(pts)}"/>
+      ${ss}
+      <circle class="mx" cx="${x(t1)}" cy="${y(D)}" r="3.5"/>
+      <g class="axis">${xt}</g>
+    </svg>
+    <p class="note">Perfil aproximado a partir de tus datos. Más adelante se podrá importar del ordenador de buceo.</p>
+  </div>`;
+}
+
+function kv(rows) {
+  const r = rows.filter(([, v]) => has(v) && v !== "—");
+  if (!r.length) return "";
+  return `<dl class="kv">${r.map(([k, v, txt]) => `<dt>${k}</dt><dd class="${txt ? "txt" : ""}">${v}</dd>`).join("")}</dl>`;
+}
+
+function diveHTML(id) {
+  const d = dives.find((x) => x.id === id);
+  if (!d) return homeHTML();
+  const s = sac(d);
+  const used = has(d.pStart) && has(d.pEnd) && has(d.tankVol) ? (d.pStart - d.pEnd) * d.tankVol : null;
+  const m = d.gas !== "Aire" && d.o2 ? mod(d.o2) : null;
+  const stars = has(d.rating) ? `<span class="stars" aria-label="${d.rating} de 5">${"★".repeat(d.rating)}<span class="off">${"★".repeat(5 - d.rating)}</span></span>` : "";
+  const life = (d.life || "").split(",").map((x) => x.trim()).filter(Boolean);
+  return `
+    <button type="button" class="btn ghost back" data-cont="${esc(d.continent)}">← ${esc(CONTINENTS[d.continent]?.name || "Volver")}</button>
+    <div class="dh">
+      <div class="top-meta num">#${esc(d.num ?? "")} · ${fmtDate(d.date)}${d.timeIn ? ` · ${esc(d.timeIn)}${d.timeOut ? "–" + esc(d.timeOut) : ""}` : ""} ${d.example ? '<span class="chip ex">Ejemplo</span>' : ""}</div>
+      <h2>${esc(d.site)}</h2>
+      <p style="margin:4px 0 6px;color:var(--ink-2)">${esc([d.region, d.country].filter(Boolean).join(" · "))}</p>
+      ${stars}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="label">Prof. máxima</div><div class="v">${has(d.maxDepth) ? nf1.format(d.maxDepth) : "—"}<small>m</small></div></div>
+      <div class="stat"><div class="label">Tiempo total</div><div class="v">${has(d.duration) ? d.duration : "—"}<small>min</small></div></div>
+      <div class="stat"><div class="label">Prof. media</div><div class="v">${has(d.avgDepth) ? nf1.format(d.avgDepth) : "—"}<small>m</small></div></div>
+      <div class="stat"><div class="label">Temp. fondo</div><div class="v">${has(d.tBottom) ? nf0.format(d.tBottom) : "—"}<small>°C</small></div></div>
+    </div>
+    ${profileSVG(d)}
+    <section class="sec"><div class="label">Lugar y equipo humano</div>${kv([
+      ["Continente", esc(CONTINENTS[d.continent]?.name), 1],
+      ["Coordenadas", has(d.lat) && has(d.lon) ? `${d.lat.toFixed(3)}, ${d.lon.toFixed(3)}` : null],
+      ["Centro de buceo", esc(d.operator), 1],
+      ["Compañero/a", esc(d.buddy), 1],
+      ["Guía / instructor", esc(d.guide), 1],
+      ["Entrada", esc(d.entry), 1],
+      ["Tipo", esc((d.activities || []).join(", ")), 1],
+    ])}</section>
+    <section class="sec"><div class="label">Tiempos y paradas</div>${kv([
+      ["Hora entrada / salida", d.timeIn ? `${esc(d.timeIn)} – ${esc(d.timeOut || "")}` : null],
+      ["Parada de seguridad", d.ssTime ? `${nf0.format(d.ssTime)} min a ${nf0.format(d.ssDepth || 5)} m` : (d.ssTime === 0 ? "No" : null)],
+      ["Paradas de descompresión", esc(d.deco) || null],
+      ["Intervalo en superficie", has(d.surfInt) ? fmtMin(d.surfInt) : null],
+    ])}</section>
+    <section class="sec"><div class="label">Gas y botella</div>${kv([
+      ["Mezcla", esc(gasLabel(d))],
+      ["MOD (ppO₂ 1,4)", m ? `${nf1.format(m)} m` : null],
+      ["Botella", has(d.tankVol) ? `${nf0.format(d.tankVol)} L ${esc(d.tankMat || "")}` : null],
+      ["Presión inicio → fin", has(d.pStart) ? `${d.pStart} → ${has(d.pEnd) ? d.pEnd : "—"} bar` : null],
+      ["Gas consumido", used ? `${nf0.format(used)} L` : null],
+      ["Consumo en superficie (SAC)", s ? `${nf1.format(s)} L/min` : null],
+    ])}</section>
+    <section class="sec"><div class="label">Condiciones</div>${kv([
+      ["Temp. agua superficie", u(d.tSurf, "°C", nf0)],
+      ["Temp. agua fondo", u(d.tBottom, "°C", nf0)],
+      ["Temp. aire", u(d.tAir, "°C", nf0)],
+      ["Visibilidad", u(d.vis, "m", nf0)],
+      ["Corriente", esc(d.current), 1],
+      ["Estado del mar", esc(d.sea), 1],
+      ["Tiempo", esc(d.weather), 1],
+      ["Agua", esc(d.water), 1],
+    ])}</section>
+    <section class="sec"><div class="label">Equipo</div>${kv([
+      ["Traje", esc(d.suit), 1],
+      ["Lastre", u(d.weight, "kg")],
+      ["Ordenador", esc(d.computer), 1],
+    ])}</section>
+    ${life.length ? `<section class="sec"><div class="label">Vida marina</div><div class="chips">${life.map((l) => `<span class="chip">${esc(l)}</span>`).join("")}</div></section>` : ""}
+    ${d.notes ? `<section class="sec"><div class="label">Notas</div><p class="notes">${esc(d.notes)}</p></section>` : ""}
+    ${d.cert || d.sign ? `<section class="sec"><div class="label">Validación</div>${kv([["Certificación usada", esc(d.cert), 1], ["Firma / sello", esc(d.sign), 1]])}</section>` : ""}
+    ${confirmDelete
+      ? `<div class="confirm"><p>¿Eliminar esta inmersión? No se puede deshacer.</p><button type="button" class="btn" data-cancel-del="">Cancelar</button><button type="button" class="btn primary" data-del="${esc(d.id)}">Eliminar</button></div>`
+      : `<div class="actions"><button type="button" class="btn" data-edit="${esc(d.id)}">Editar</button><button type="button" class="btn danger" data-ask-del="">Eliminar</button></div>`}
+  `;
+}
+
+/* navegación */
+function goHome() { selected = null; view = { type: "home" }; render(); renderPanel(); }
+function selectContinent(code) {
+  selected = code; view = { type: "continent", code }; confirmDelete = false;
+  flyTo(CONTINENTS[code].center, Math.max(zoomK, 1.15));
+  render(); renderPanel();
+  if (window.matchMedia("(max-width: 860px)").matches) $("#panel").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+}
+function openDive(id, fly) {
+  const d = dives.find((x) => x.id === id); if (!d) return;
+  selected = d.continent; view = { type: "dive", id }; confirmDelete = false;
+  if (fly && has(d.lat)) flyTo([d.lon, d.lat], Math.max(zoomK, 1.6));
+  else if (has(d.lat)) flyTo([d.lon, d.lat]);
+  render(); renderPanel();
+  if (window.matchMedia("(max-width: 860px)").matches) $("#panel").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+}
+
+panelIn.addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.dive) openDive(t.dataset.dive, true);
+  else if (t.dataset.cont !== undefined) selectContinent(t.dataset.cont);
+  else if (t.dataset.home !== undefined) goHome();
+  else if (t.dataset.new !== undefined) openForm(null, t.dataset.new || null);
+  else if (t.dataset.edit) openForm(t.dataset.edit);
+  else if (t.dataset.askDel !== undefined) { confirmDelete = true; renderPanel(); }
+  else if (t.dataset.cancelDel !== undefined) { confirmDelete = false; renderPanel(); }
+  else if (t.dataset.del) {
+    const d = dives.find((x) => x.id === t.dataset.del);
+    dives = dives.filter((x) => x.id !== t.dataset.del); save();
+    confirmDelete = false; toast("Inmersión eliminada");
+    if (d) selectContinent(d.continent); else goHome();
+  } else if (t.id === "clear-ex") {
+    dives = dives.filter((x) => !x.example); save(); toast("Ejemplos eliminados"); goHome();
+  }
+});
+
+/* =========================================================
+   Formulario
+   ========================================================= */
+const overlay = $("#overlay");
+const form = $("#form");
+let editingId = null;
+
+const num = (id, label, unit, opts = {}) => `<div class="f ${opts.cls || ""}"><label for="${id}">${label}${opts.req ? ' <span class="req">*</span>' : ""}</label>
+  <div class="inp"><input id="${id}" name="${id}" type="number" inputmode="decimal" step="${opts.step || "any"}" ${opts.min !== undefined ? `min="${opts.min}"` : ""} ${opts.max !== undefined ? `max="${opts.max}"` : ""} placeholder="${opts.ph || ""}"><span class="u">${unit}</span></div>
+  ${opts.help ? `<span class="help" id="${id}-help">${opts.help}</span>` : ""}</div>`;
+const txt = (id, label, opts = {}) => `<div class="f ${opts.cls || ""}"><label for="${id}">${label}${opts.req ? ' <span class="req">*</span>' : ""}</label>
+  <input id="${id}" name="${id}" type="${opts.type || "text"}" placeholder="${opts.ph || ""}" ${opts.list ? `list="${opts.list}"` : ""}>${opts.help ? `<span class="help" id="${id}-help">${opts.help}</span>` : ""}</div>`;
+const sel = (id, label, items, opts = {}) => `<div class="f ${opts.cls || ""}"><label for="${id}">${label}${opts.req ? ' <span class="req">*</span>' : ""}</label>
+  <select id="${id}" name="${id}"><option value="">${opts.empty || "—"}</option>${items.map((it) => Array.isArray(it) ? `<option value="${it[0]}">${it[1]}</option>` : `<option>${it}</option>`).join("")}</select>${opts.help ? `<span class="help" id="${id}-help">${opts.help}</span>` : ""}</div>`;
+
+function buildForm() {
+  $("#form-body").innerHTML = `
+  <fieldset>
+    <legend>Datos generales</legend>
+    <p class="lg-sub">Cuándo y dónde fue la inmersión.</p>
+    <div class="grid">
+      ${num("f-num", "Nº de inmersión", "#", { step: 1, min: 1 })}
+      ${txt("f-date", "Fecha", { type: "date", req: 1 })}
+      ${txt("f-timeIn", "Hora de entrada", { type: "time" })}
+      ${txt("f-timeOut", "Hora de salida", { type: "time" })}
+      ${txt("f-site", "Punto de buceo", { req: 1, ph: "p. ej. SS Thistlegorm", cls: "w2" })}
+      ${txt("f-region", "Zona / región", { ph: "p. ej. Mar Rojo" })}
+      ${txt("f-country", "País", { ph: "p. ej. Egipto" })}
+      ${sel("f-continent", "Continente", ORDER.map((c) => [c, CONTINENTS[c].name]), { req: 1, empty: "Elige…" })}
+      ${num("f-lat", "Latitud", "°", { min: -90, max: 90, ph: "27.814" })}
+      ${num("f-lon", "Longitud", "°", { min: -180, max: 180, ph: "33.921", help: "Con las coordenadas aparece el punto en el globo." })}
+      <div class="f full"><span class="help" id="geo-help"></span></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Profundidad y tiempo</legend>
+    <p class="lg-sub">Lo esencial de la bitácora. Si pones horas de entrada y salida, el tiempo se calcula solo.</p>
+    <div class="grid">
+      ${num("f-maxDepth", "Profundidad máxima", "m", { req: 1, min: 0, max: 330, ph: "18" })}
+      ${num("f-avgDepth", "Profundidad media", "m", { min: 0, ph: "12" })}
+      ${num("f-duration", "Tiempo total", "min", { req: 1, min: 1, step: 1, ph: "45" })}
+      ${num("f-surfInt", "Intervalo en superficie", "min", { min: 0, step: 1, help: "Desde la inmersión anterior." })}
+      ${num("f-ssDepth", "Parada de seguridad", "m", { min: 0, ph: "5" })}
+      ${num("f-ssTime", "Duración de la parada", "min", { min: 0, ph: "3" })}
+      ${txt("f-deco", "Paradas de descompresión", { ph: "p. ej. 6 m · 2 min", cls: "w2" })}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Gas y botella</legend>
+    <p class="lg-sub">Con las presiones y el volumen se calcula tu consumo en superficie (SAC).</p>
+    <div class="grid">
+      ${sel("f-gas", "Mezcla", GASES)}
+      ${num("f-o2", "Oxígeno (O₂)", "%", { min: 21, max: 100, step: 1, help: "" })}
+      ${num("f-he", "Helio (He)", "%", { min: 0, max: 80, step: 1 })}
+      ${sel("f-tankMat", "Material botella", ["Aluminio", "Acero"])}
+      ${num("f-tankVol", "Volumen botella", "L", { min: 1, ph: "12" })}
+      ${num("f-pStart", "Presión inicial", "bar", { min: 0, step: 1, ph: "200" })}
+      ${num("f-pEnd", "Presión final", "bar", { min: 0, step: 1, ph: "50" })}
+      <div class="f"><span class="flab">Consumo (SAC)</span><span class="num" id="sac-out" style="padding:8px 0">—</span></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Condiciones</legend>
+    <div class="grid">
+      ${num("f-tSurf", "Temp. agua superficie", "°C", { step: 0.5 })}
+      ${num("f-tBottom", "Temp. agua fondo", "°C", { step: 0.5 })}
+      ${num("f-tAir", "Temp. aire", "°C", { step: 0.5 })}
+      ${num("f-vis", "Visibilidad", "m", { min: 0, step: 1 })}
+      ${sel("f-current", "Corriente", CURRENTS)}
+      ${sel("f-sea", "Estado del mar", SEAS)}
+      ${sel("f-weather", "Tiempo", WEATHER)}
+      ${sel("f-water", "Tipo de agua", ["Salada", "Dulce", "Salobre"])}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Tipo de inmersión</legend>
+    <div class="grid">
+      <div class="f full"><span class="flab">Entrada</span><div class="toggles" role="radiogroup" aria-label="Entrada">${ENTRIES.map((e, i) => `<label><input type="radio" name="entry" id="f-entry-${i}" value="${e}"><span>${e}</span></label>`).join("")}</div></div>
+      <div class="f full"><span class="flab">Actividad (puedes marcar varias)</span><div class="toggles">${ACTIVITIES.map((a, i) => `<label><input type="checkbox" name="activities" id="f-act-${i}" value="${a}"><span>${a}</span></label>`).join("")}</div></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Equipo y personas</legend>
+    <div class="grid">
+      ${sel("f-suit", "Traje", SUITS)}
+      ${num("f-weight", "Lastre", "kg", { min: 0, step: 0.5 })}
+      ${txt("f-computer", "Ordenador de buceo", { ph: "p. ej. Shearwater Peregrine" })}
+      ${txt("f-operator", "Centro de buceo / barco")}
+      ${txt("f-buddy", "Compañero/a")}
+      ${txt("f-guide", "Guía / instructor")}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Experiencia</legend>
+    <div class="grid">
+      ${txt("f-life", "Vida marina vista", { cls: "full", ph: "Separa con comas: tortuga, mero, raya águila" })}
+      <div class="f full"><span class="flab">Valoración</span><div class="rating" role="radiogroup" aria-label="Valoración">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" name="rating" id="f-r${n}" value="${n}"><label for="f-r${n}" title="${n} de 5">★</label>`).join("")}</div></div>
+      <div class="f full"><label for="f-notes">Notas</label><textarea id="f-notes" name="f-notes" placeholder="Lo que quieras recordar de esta inmersión"></textarea></div>
+    </div>
+  </fieldset>
+  <fieldset style="border-bottom:0">
+    <legend>Validación</legend>
+    <p class="lg-sub">Como la firma o el sello en el logbook de papel.</p>
+    <div class="grid">
+      ${txt("f-cert", "Certificación usada", { ph: "p. ej. Advanced Open Water", list: "certs" })}
+      ${txt("f-sign", "Validado por", { ph: "Nombre y nº de instructor / centro", cls: "w2" })}
+    </div>
+    <datalist id="certs"><option>Open Water</option><option>Advanced Open Water</option><option>Rescue Diver</option><option>Divemaster</option><option>Instructor</option><option>Buceador 1 estrella</option><option>Buceador 2 estrellas</option><option>Buceador 3 estrellas</option></datalist>
+  </fieldset>`;
+}
+buildForm();
+
+const FIELDS = ["num", "date", "timeIn", "timeOut", "site", "region", "country", "continent", "lat", "lon", "maxDepth", "avgDepth", "duration", "surfInt", "ssDepth", "ssTime", "deco",
+  "gas", "o2", "he", "tankMat", "tankVol", "pStart", "pEnd", "tSurf", "tBottom", "tAir", "vis", "current", "sea", "weather", "water", "suit", "weight", "computer", "operator", "buddy", "guide", "life", "notes", "cert", "sign"];
+const NUMERIC = new Set(["num", "lat", "lon", "maxDepth", "avgDepth", "duration", "surfInt", "ssDepth", "ssTime", "o2", "he", "tankVol", "pStart", "pEnd", "tSurf", "tBottom", "tAir", "vis", "weight"]);
+const fe = (k) => document.getElementById("f-" + k);
+
+function openForm(id, contCode) {
+  editingId = id || null;
+  form.reset();
+  $("#form-err").textContent = "";
+  const d = id ? dives.find((x) => x.id === id) : null;
+  $("#form-title").textContent = d ? `Editar inmersión #${d.num ?? ""}` : "Nueva inmersión";
+  if (d) {
+    FIELDS.forEach((k) => { if (fe(k)) fe(k).value = has(d[k]) ? d[k] : ""; });
+    form.querySelectorAll('[name="entry"]').forEach((r) => (r.checked = r.value === d.entry));
+    form.querySelectorAll('[name="activities"]').forEach((c) => (c.checked = (d.activities || []).includes(c.value)));
+    form.querySelectorAll('[name="rating"]').forEach((r) => (r.checked = +r.value === d.rating));
+  } else {
+    const last = dives.slice().sort(byDateDesc)[0];
+    fe("num").value = dives.reduce((m, x) => Math.max(m, +x.num || 0), 0) + 1;
+    fe("date").value = new Date().toISOString().slice(0, 10);
+    fe("gas").value = "Aire";
+    fe("o2").value = 21;
+    fe("water").value = "Salada";
+    fe("ssDepth").value = 5; fe("ssTime").value = 3;
+    if (contCode) fe("continent").value = contCode;
+    else if (selected) fe("continent").value = selected;
+    if (last) { fe("suit").value = last.suit || ""; fe("computer").value = last.computer || ""; fe("cert").value = last.cert || ""; }
+  }
+  $("#geo-help").textContent = "";
+  syncGas(); updateSac();
+  overlay.hidden = false;
+  document.body.style.overflow = "hidden";
+  setTimeout(() => fe("site").focus(), 30);
+}
+function closeForm() { overlay.hidden = true; document.body.style.overflow = ""; }
+$("#btn-new").addEventListener("click", () => openForm(null, null));
+$("#form-x").addEventListener("click", closeForm);
+$("#form-cancel").addEventListener("click", closeForm);
+overlay.addEventListener("click", (e) => { if (e.target === overlay) closeForm(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeForm(); });
+
+function readForm() {
+  const o = {};
+  FIELDS.forEach((k) => { const el = fe(k); if (!el) return; const v = el.value.trim(); o[k] = NUMERIC.has(k) ? (v === "" ? null : +v) : v; });
+  o.entry = form.querySelector('[name="entry"]:checked')?.value || "";
+  o.activities = [...form.querySelectorAll('[name="activities"]:checked')].map((c) => c.value);
+  const r = form.querySelector('[name="rating"]:checked'); o.rating = r ? +r.value : null;
+  return o;
+}
+
+function syncGas() {
+  const g = fe("gas").value;
+  const o2 = fe("o2"), he = fe("he");
+  if (g === "Aire" || g === "") { o2.value = 21; o2.disabled = true; }
+  else { o2.disabled = false; if (+o2.value <= 21) o2.value = 32; }
+  he.disabled = g !== "Trimix";
+  if (g !== "Trimix") he.value = "";
+  checkMod();
+}
+function checkMod() {
+  const help = $("#f-o2-help"); if (!help) return;
+  const o2 = +fe("o2").value, md = +fe("maxDepth").value;
+  if (fe("gas").value === "Aire" || !o2) { help.textContent = "Aire: 21 % de O₂."; help.className = "help"; return; }
+  const m = mod(o2);
+  if (md && md > m) { help.textContent = `Ojo: la MOD a 1,4 bar es ${nf1.format(m)} m y bajaste a ${nf1.format(md)} m.`; help.className = "help warn"; }
+  else { help.textContent = `MOD a ppO₂ 1,4 bar: ${nf1.format(m)} m.`; help.className = "help ok"; }
+}
+function updateSac() {
+  const s = sac(readForm());
+  $("#sac-out").textContent = s ? `${nf1.format(s)} L/min` : "Falta presión, volumen o tiempo";
+}
+function autoDuration() {
+  const a = fe("timeIn").value, b = fe("timeOut").value;
+  if (!a || !b || fe("duration").value) return;
+  const [h1, m1] = a.split(":").map(Number), [h2, m2] = b.split(":").map(Number);
+  let mins = h2 * 60 + m2 - (h1 * 60 + m1); if (mins < 0) mins += 1440;
+  if (mins > 0 && mins < 600) fe("duration").value = mins;
+}
+function detectContinent() {
+  const lat = parseFloat(fe("lat").value), lon = parseFloat(fe("lon").value);
+  const h = $("#geo-help");
+  if (isNaN(lat) || isNaN(lon)) { h.textContent = ""; return; }
+  const f = world.features.find((ft) => d3.geoContains(ft, [lon, lat]));
+  let code = f?.id;
+  if (!code) { // en el mar: continente más cercano
+    let best = Infinity;
+    world.features.forEach((ft) => { const dd = d3.geoDistance(d3.geoCentroid(ft), [lon, lat]); if (dd < best) { best = dd; code = ft.id; } });
+    // centroides aproximados para islas y mares
+    ORDER.forEach((c) => { const dd = d3.geoDistance(CONTINENTS[c].center, [lon, lat]); if (dd < best) { best = dd; code = c; } });
+  }
+  if (code) { fe("continent").value = code; h.textContent = `Continente detectado por las coordenadas: ${CONTINENTS[code].name}.`; h.className = "help ok"; }
+}
+
+form.addEventListener("input", (e) => {
+  const id = e.target.id;
+  if (id === "f-gas") syncGas();
+  if (id === "f-o2" || id === "f-maxDepth") checkMod();
+  if (["f-pStart", "f-pEnd", "f-tankVol", "f-duration", "f-avgDepth", "f-maxDepth"].includes(id)) updateSac();
+});
+form.addEventListener("change", (e) => {
+  const id = e.target.id;
+  if (id === "f-timeIn" || id === "f-timeOut") { autoDuration(); updateSac(); }
+  if (id === "f-lat" || id === "f-lon") detectContinent();
+});
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const o = readForm();
+  const errs = [];
+  if (!o.date) errs.push("la fecha");
+  if (!o.site) errs.push("el punto de buceo");
+  if (!o.continent) errs.push("el continente");
+  if (!has(o.maxDepth)) errs.push("la profundidad máxima");
+  if (!has(o.duration)) errs.push("el tiempo total");
+  if (errs.length) { $("#form-err").textContent = `Falta ${errs.join(", ")}.`; return; }
+  if (has(o.avgDepth) && o.avgDepth > o.maxDepth) { $("#form-err").textContent = "La profundidad media no puede ser mayor que la máxima."; return; }
+  if (has(o.pStart) && has(o.pEnd) && o.pEnd > o.pStart) { $("#form-err").textContent = "La presión final es mayor que la inicial. Revisa los valores."; return; }
+  if (has(o.lat) !== has(o.lon)) { $("#form-err").textContent = "Pon latitud y longitud, o deja las dos vacías."; return; }
+  if (editingId) {
+    const i = dives.findIndex((x) => x.id === editingId);
+    dives[i] = { ...dives[i], ...o };
+  } else {
+    o.id = "d" + Date.now().toString(36);
+    dives.push(o);
+  }
+  save(); closeForm();
+  toast(editingId ? "Cambios guardados" : "Inmersión guardada");
+  openDive(editingId || o.id, true);
+});
+
+/* =========================================================
+   Arranque
+   ========================================================= */
+new ResizeObserver(resize).observe(stage);
+resize();
+renderPanel();
+})();
+</script>
+</body>
+</html>
